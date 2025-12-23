@@ -1,0 +1,200 @@
+configfile: "snakemake_config.yaml"
+from pathlib import Path
+from glob import glob
+
+# Pick the first configured data directory that actually exists.
+inputdirs = config.get("inputdirs", [])
+inputdir = next((Path(d) for d in inputdirs if Path(d).exists()), None)
+if inputdir is None:
+    raise ValueError(f"No usable input directory found in inputdirs: {inputdirs}")
+print(f"Using input directory: {inputdir}")
+
+
+# Discover samples via Selected_* files (adjust filter as needed).
+samples = sorted(glob(str(inputdir / "*" / "*" / "Selected_*.tif")))
+samples = [s for s in samples if "epi15" not in s]  # filter here if needed
+
+sample_paths = sorted({str(Path(s).parent) for s in samples})
+
+for s in sample_paths:
+    print(f"Discovered sample path: {s}")
+
+wildcard_constraints:
+    sample_path=".+"  # allow full paths for sample directories
+
+
+def first_binned_composite(wildcards):
+    base = Path(wildcards.sample_path)
+    matches = sorted(base.glob("Binned_composite_*.tif"))
+    if not matches:
+        raise ValueError(f"No Binned_composite image found in {base}")
+    return str(matches[0])
+
+def selected_image(wildcards):
+    base = Path(wildcards.sample_path)
+    matches = sorted(base.glob("Selected_*.tif"))
+    if not matches:
+        raise ValueError(f"No Selected image found in {base}")
+    if len(matches) > 1:
+        raise ValueError(f"Multiple Selected images found in {base}: {matches}")
+    return str(matches[0])
+
+
+rule all:
+    input:
+        expand("{sample_path}/snakemake/embryo_mesh.stl", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/rotation_metadata.toml", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/ExE_cells/rotated_cut_plane.csv", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/ExE_cells/rotated_tip_point.csv", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/rotated_embryo_mesh.stl", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/rotated_domain_labels.tif", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/rotated_labels.tif", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/rotated_composite_ch1.tif", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/rotated_composite_ch2.tif", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/rotated_composite_ch3.tif", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/rotated/rotated_composite_ch4.tif", sample_path=sample_paths),
+        expand("{sample_path}/snakemake/cell_meshes/cell_meshes.gltf", sample_path=sample_paths),
+        f"{inputdir}/combined_rotation_metadata.toml",
+
+rule label_to_embryo_mesh:
+    input:
+        label_image=selected_image
+    output:
+        embryo_mesh="{sample_path}/snakemake/embryo_mesh.stl"
+    script:
+        "../scripts/label_to_embryo_mesh.py"
+
+rule label_to_cell_meshes:
+    input:
+        label_image=selected_image
+    output:
+        cell_meshes="{sample_path}/snakemake/cell_meshes/cell_meshes.gltf"
+    script:
+        "../scripts/label_to_cell_meshes.py"
+
+rule epi_mesh_to_affine_transformation:
+    input:
+        embryo_mesh="{sample_path}/snakemake/embryo_mesh.stl",
+        cut_plane="{sample_path}/ExE_cells/cut_plane.csv",
+        tip_point="{sample_path}/ExE_cells/tip_point.csv",
+        binned_composite=first_binned_composite
+    output:
+        rotation_metadata="{sample_path}/snakemake/rotated/rotation_metadata.toml"
+    script:
+        "../scripts/embryo_mesh_to_coordinates.py"
+
+rule rotate_points_into_coordinates:
+    input:
+        points="{sample_path}/{path}{filename}.csv",
+        rotation_data="{sample_path}/snakemake/rotated/rotation_metadata.toml",
+    output:
+        rotated_points="{sample_path}/snakemake/rotated/{path}rotated_{filename}.csv"
+    script:
+        "../scripts/rotate_points_into_coordinates.py"
+
+rule backrotate_points_from_coordinates:
+    input:
+        rotated_points="{sample_path}/{path}{filename}.csv",
+        rotation_data="{sample_path}/snakemake/rotated/rotation_metadata.toml",
+    output:
+        backrotated_points="{sample_path}/snakemake/backrotated/{path}backrotated_{filename}.csv"
+    script:
+        "../scripts/backrotate_points_from_coordinates.py"
+
+
+rule rotate_image_into_coordinates_ch1:
+    input:
+        input_image=first_binned_composite,
+        rotation_metadata="{sample_path}/snakemake/rotated/rotation_metadata.toml",
+    params:
+        channel=1,
+        order=1,
+    output:
+        rotated_image="{sample_path}/snakemake/rotated/rotated_composite_ch1.tif",
+    script:
+        "../scripts/rotate_image_into_coordinates.py"
+
+rule rotate_mesh_into_coordinates:
+    input:
+        embryo_mesh="{sample_path}/snakemake/embryo_mesh.stl",
+        rotation_data="{sample_path}/snakemake/rotated/rotation_metadata.toml",
+    output:
+        label_image="{sample_path}/snakemake/rotated/rotated_embryo_mesh.stl",
+    script:
+        "../scripts/rotate_mesh_into_coordinates.py"
+
+rule rotated_mesh_to_domain_labels:
+    input:
+        mesh="{sample_path}/snakemake/rotated/rotated_embryo_mesh.stl",
+        metadata="{sample_path}/snakemake/rotated/rotation_metadata.toml",
+    output:
+        label_image="{sample_path}/snakemake/rotated/rotated_domain_labels.tif",
+    script:
+        "../scripts/rotated_mesh_to_domain_labels.py"
+
+rule rotate_image_into_coordinates_ch2:
+    input:
+        input_image=first_binned_composite,
+        rotation_metadata="{sample_path}/snakemake/rotated/rotation_metadata.toml",
+    params:
+        channel=2,
+        order=1,
+    output:
+        rotated_image="{sample_path}/snakemake/rotated/rotated_composite_ch2.tif"
+    script:
+        "../scripts/rotate_image_into_coordinates.py"
+
+rule rotate_image_into_coordinates_ch3:         
+    input:
+        input_image=first_binned_composite,
+        rotation_metadata="{sample_path}/snakemake/rotated/rotation_metadata.toml",
+    params:
+        channel=3,
+        order=1,
+    output:
+        rotated_image="{sample_path}/snakemake/rotated/rotated_composite_ch3.tif"
+    script:
+        "../scripts/rotate_image_into_coordinates.py"
+
+rule rotate_image_into_coordinates_ch4:
+    input:
+        input_image=first_binned_composite,
+        rotation_metadata="{sample_path}/snakemake/rotated/rotation_metadata.toml",
+    params:
+        channel=4,
+        order=1,
+    output:
+        rotated_image="{sample_path}/snakemake/rotated/rotated_composite_ch4.tif"
+    script:
+        "../scripts/rotate_image_into_coordinates.py"
+
+rule rotate_image_into_coordinates_labelimage:
+    input:
+        input_image=selected_image,
+        rotation_metadata="{sample_path}/snakemake/rotated/rotation_metadata.toml",
+    params:
+        order=0,
+    output:
+        rotated_image="{sample_path}/snakemake/rotated/rotated_labels.tif"
+    script:
+        "../scripts/rotate_image_into_coordinates.py"
+
+
+rule combine_rotation_metadata:
+    input:
+        tomls = expand(
+            "{sample_path}/snakemake/rotated/rotation_metadata.toml",
+            sample_path=sample_paths,
+        )
+    output:
+        combined_toml = f"{inputdir}/combined_rotation_metadata.toml"
+    run:
+        import toml
+        combined = {}
+        for toml_file in input.tomls:
+            sample_folder = Path(toml_file).parent.parent.parent.name
+            with open(toml_file, "r") as f:
+                data = toml.load(f)
+            combined[sample_folder] = data
+        with open(output.combined_toml, "w") as f:
+            toml.dump(combined, f)
