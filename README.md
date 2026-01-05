@@ -1,4 +1,11 @@
-# ti-epiblast-cell-organization
+# EpiblastOrientationImageAnalysis
+
+Repository analyzing epiblast orientation maps supporting
+
+- "Boundary-guided cell alignment drives mouse epiblast maturation." by T. Ichikawa, P. C. Guruciaga, S. Hu, S. Plunder, M. Makino, M. Hamaji, A. Stokkermans, S. Yoshida, T. Hiiragi, A. Erzberger.
+- "Boundary geometry controls a topological defect transition that determines lumen nucleation in embryonic development" by P. C. Guruciaga, T. Ichikawa, S. Plunder, T. Hiiragi, A. Erzberger.
+
+## Description
 
 Snakemake workflow for processing embryo/epiblast microscopy data and generating meshes, rotated metadata, and domain labels.
 
