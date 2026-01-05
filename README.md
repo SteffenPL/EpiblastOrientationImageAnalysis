@@ -32,3 +32,7 @@ Snakemake workflow for processing embryo/epiblast microscopy data and generating
   - `front_points.csv`: anterior reference points; averaged to orient the embryo.
   - Optional `ignore_auto_tip_point.csv`: when present, `embryo_mesh_to_coordinates.py` keeps the manual tip and writes the auto-detected tip into this file; otherwise the auto tip replaces the manual one and is saved to `auto_tip_point.csv`.
 - All CSV coordinates are interpreted in pixel units and internally converted to microns using the hard-coded 0.1632 µm isotropic calibration, so ensure the annotation files match the voxel spacing of the `Selected_*` and `Binned_composite_*` images.
+
+# Post-processing
+
+To generate orientation map plots, we refer to the notebooks in `/submodules/EpiblastOrientationMaps` or (https://github.com/SteffenPL/EpiblastOrientationMaps) and the readme therein.
